@@ -1,0 +1,55 @@
+module top_module(
+    input clk,
+    input in,
+    input reset,    // Synchronous reset
+    output [7:0] out_byte,
+    output done
+); 
+   
+    
+    // Modify FSM and datapath from Fsm_serialdata
+    parameter START = 0, CHECK = 9, STOP = 10, IDEL = 11, ERROR = 12;
+    reg [4:0] state, next_state;
+    reg valid, start;
+
+    always @(*) begin
+        start = 0;
+        case (state)
+            IDEL: begin next_state = in ? IDEL : START; start = 1'b1; end
+            STOP: begin next_state = in ? IDEL : START; start = 1'b1; end
+            CHECK: next_state = in ? STOP : ERROR;
+            ERROR: next_state = in ? IDEL : ERROR;
+            default: next_state = state + 1'b1;
+        endcase  
+    end
+    
+    always @(posedge clk)
+        if (reset)
+            state <= IDEL;
+        else begin
+            state <= next_state;
+            valid <= odd;
+        end
+    
+    always @(posedge clk)
+        if ((state >= 0) & (state < 8))
+            out_byte[state] <= in;
+    
+    wire odd;
+    parity check(clk, reset | start, in, odd);
+    
+    assign done = (valid & (state == STOP));
+
+endmodule
+
+/* module parity (
+    input clk,
+    input reset,
+    input in,
+    output reg odd);
+
+    always @(posedge clk)
+        if (reset) odd <= 0;
+        else if (in) odd <= ~odd;
+
+endmodule */
