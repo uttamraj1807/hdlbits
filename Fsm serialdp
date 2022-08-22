@@ -5,41 +5,60 @@ module top_module(
     output [7:0] out_byte,
     output done
 ); 
-   
-    
-    // Modify FSM and datapath from Fsm_serialdata
-    parameter START = 0, CHECK = 9, STOP = 10, IDEL = 11, ERROR = 12;
-    reg [4:0] state, next_state;
-    reg valid, start;
-
+    // newly added check state   Check if it is correct 
+	parameter Idle=0,Start=1,Receiving=2,Stop=3,Error=4,Done=5,Check=6;
+	reg [2:0] state,next_state;
+	reg [3:0] cnt;
+	wire odd;
+	
+    // Example module 
+	parity(
+        .clk(clk),
+        // Reset   The next status is start   Then reset 
+        .reset(reset|| next_state == Start),
+        .in(in),
+		.odd(odd)
+	);
+	
     always @(*) begin
-        start = 0;
-        case (state)
-            IDEL: begin next_state = in ? IDEL : START; start = 1'b1; end
-            STOP: begin next_state = in ? IDEL : START; start = 1'b1; end
-            CHECK: next_state = in ? STOP : ERROR;
-            ERROR: next_state = in ? IDEL : ERROR;
-            default: next_state = state + 1'b1;
-        endcase  
-    end
-    
-    always @(posedge clk)
-        if (reset)
-            state <= IDEL;
-        else begin
-            state <= next_state;
-            valid <= odd;
-        end
-    
-    always @(posedge clk)
-        if ((state >= 0) & (state < 8))
-            out_byte[state] <= in;
-    
-    wire odd;
-    parity check(clk, reset | start, in, odd);
-    
-    assign done = (valid & (state == STOP));
-
+		case(state)
+			Idle: next_state = in ? Idle : Start;
+			Start: next_state = Receiving;
+            Receiving: next_state = (cnt==4'd7) ? Check : Receiving;
+            // If the preceding byte has an odd number 1  So the first 9 Bit should be 0, And now odd Output is 1, So the two are not equal   Enter the stop bit check state   Responsible for entering the error state 
+			Check: next_state = (in != odd) ? Stop : Error;
+            Stop: next_state =  in ? Done : Error;
+			Error: next_state = in ? Idle : Error;
+			Done: next_state = in ? Idle : Start;
+		endcase
+	end
+	
+	always @(posedge clk) begin
+		if(reset)
+			state <= Idle;
+		else begin
+			state <= next_state;
+		end
+	end
+	
+	always @(posedge clk) begin
+		if(reset)
+			cnt <= 4'd0;
+		else begin
+            if(next_state==Receiving) begin
+				cnt <= cnt + 1'b1;
+				out_byte[cnt] <= in;
+			end
+			else  
+				cnt <= 4'd0;
+				
+			if(next_state==Check)
+				out_byte[7] <= in;
+		end
+	end
+	
+	assign done = (state==Done);
+	
 endmodule
 
 /* module parity (
